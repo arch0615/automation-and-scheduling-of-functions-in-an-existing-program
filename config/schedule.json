@@ -1,0 +1,76 @@
+{
+  "tasks": [
+    {
+      "app": "insta",
+      "module": "enviar_direct",
+      "duration_min": 45,
+      "targeting": "local",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "entrar_em_grupos",
+      "duration_min": 30,
+      "targeting": "local",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "postar_nos_grupos",
+      "duration_min": 40,
+      "targeting": "national",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "postar_no_mural",
+      "duration_min": 30,
+      "targeting": "local",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "postar_aniversariantes",
+      "duration_min": 20,
+      "targeting": "local",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "enviar_mensagem",
+      "duration_min": 35,
+      "targeting": "local",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "curtir_pagina",
+      "duration_min": 20,
+      "targeting": "national",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "comentar_publicacao",
+      "duration_min": 25,
+      "targeting": "local",
+      "enabled": true
+    }
+  ],
+  "schedule": {
+    "peak_hours": [["08:00", "12:00"], ["14:00", "18:00"]],
+    "moderate_hours": [["12:00", "14:00"], ["18:00", "22:00"]],
+    "off_hours": [["22:00", "08:00"]]
+  },
+  "randomization": {
+    "delay_between_tasks_min": 3,
+    "delay_between_tasks_max": 10,
+    "shuffle_task_order": true,
+    "vary_duration_percent": 20
+  },
+  "intensity": {
+    "peak": 1.0,
+    "moderate": 0.6,
+    "off": 0.0
+  }
+}

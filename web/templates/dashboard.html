@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Housoft Meta - Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 16px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #333;
+        }
+        .header h1 { font-size: 20px; color: #e94560; }
+        .header a { color: #aaa; text-decoration: none; font-size: 14px; }
+
+        /* Status Card */
+        .status-card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-running { background: #4ecdc4; box-shadow: 0 0 8px #4ecdc4; }
+        .status-stopped { background: #e94560; }
+        .status-paused { background: #f9a825; }
+        .status-label { font-size: 18px; font-weight: 600; }
+
+        .current-task {
+            margin-top: 12px;
+            padding: 12px;
+            background: #0f3460;
+            border-radius: 8px;
+        }
+        .current-task .label { font-size: 12px; color: #aaa; text-transform: uppercase; }
+        .current-task .value { font-size: 16px; margin-top: 4px; }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        /* Controls */
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .btn {
+            padding: 14px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            color: white;
+            transition: opacity 0.2s;
+        }
+        .btn:active { opacity: 0.7; }
+        .btn-start { background: #4ecdc4; }
+        .btn-stop { background: #e94560; }
+        .btn-pause { background: #f9a825; color: #333; }
+        .btn-resume { background: #45b7d1; }
+
+        /* Task List */
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #aaa;
+        }
+        .task-item {
+            background: #16213e;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .task-info .task-name { font-size: 14px; font-weight: 500; }
+        .task-info .task-detail { font-size: 12px; color: #aaa; margin-top: 2px; }
+        .toggle-btn {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            color: white;
+        }
+        .toggle-on { background: #4ecdc4; }
+        .toggle-off { background: #555; }
+
+        /* History */
+        .history-item {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 6px;
+            font-size: 13px;
+        }
+        .history-item .time { color: #aaa; font-size: 11px; }
+        .history-status-completed { color: #4ecdc4; }
+        .history-status-failed { color: #e94560; }
+        .history-status-running { color: #f9a825; }
+
+        /* Refresh indicator */
+        .refresh-info { text-align: center; font-size: 11px; color: #555; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Housoft Meta</h1>
+        <a href="/logout">Logout</a>
+    </div>
+
+    <!-- Status Card -->
+    <div class="status-card">
+        <div>
+            <span class="status-indicator status-stopped" id="statusDot"></span>
+            <span class="status-label" id="statusLabel">Stopped</span>
+        </div>
+        <div class="current-task" id="currentTaskBox">
+            <div class="label">Current Task</div>
+            <div class="value" id="currentTaskName">None</div>
+        </div>
+        <div class="info-row">
+            <span>Mode: <strong id="intensityMode">--</strong></span>
+            <span>Tasks: <strong id="taskCount">0</strong> active</span>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+        <button class="btn btn-start" onclick="apiCall('start')">Start</button>
+        <button class="btn btn-stop" onclick="apiCall('stop')">Stop</button>
+        <button class="btn btn-pause" onclick="apiCall('pause')">Pause</button>
+        <button class="btn btn-resume" onclick="apiCall('resume')">Resume</button>
+    </div>
+
+    <!-- Tasks -->
+    <div class="section-title">Tasks</div>
+    <div id="taskList"></div>
+
+    <!-- History -->
+    <div class="section-title" style="margin-top: 16px;">Recent History</div>
+    <div id="historyList"></div>
+
+    <div class="refresh-info">Auto-refresh every 5 seconds</div>
+
+    <script>
+        function apiCall(action) {
+            fetch(`/api/${action}`, { method: 'POST' })
+                .then(r => r.json())
+                .then(() => refreshStatus())
+                .catch(e => console.error(e));
+        }
+
+        function toggleTask(index) {
+            fetch(`/api/tasks/${index}/toggle`, { method: 'POST' })
+                .then(r => r.json())
+                .then(() => refreshTasks())
+                .catch(e => console.error(e));
+        }
+
+        function refreshStatus() {
+            fetch('/api/status')
+                .then(r => r.json())
+                .then(data => {
+                    const dot = document.getElementById('statusDot');
+                    const label = document.getElementById('statusLabel');
+
+                    dot.className = 'status-indicator';
+                    if (data.is_running && !data.is_paused) {
+                        dot.classList.add('status-running');
+                        label.textContent = 'Running';
+                    } else if (data.is_paused) {
+                        dot.classList.add('status-paused');
+                        label.textContent = 'Paused';
+                    } else {
+                        dot.classList.add('status-stopped');
+                        label.textContent = 'Stopped';
+                    }
+
+                    const taskName = document.getElementById('currentTaskName');
+                    if (data.current_task) {
+                        taskName.textContent = `${data.current_task.app} / ${data.current_task.module}`;
+                    } else {
+                        taskName.textContent = 'None';
+                    }
+
+                    document.getElementById('intensityMode').textContent = data.intensity_mode || '--';
+                    document.getElementById('taskCount').textContent = data.enabled_tasks_count || 0;
+
+                    // History
+                    const historyList = document.getElementById('historyList');
+                    historyList.innerHTML = '';
+                    if (data.task_history) {
+                        data.task_history.reverse().forEach(h => {
+                            const div = document.createElement('div');
+                            div.className = 'history-item';
+                            const time = new Date(h.started_at).toLocaleTimeString();
+                            div.innerHTML = `
+                                <span class="history-status-${h.status}">${h.status}</span>
+                                ${h.app}/${h.task} - ${h.planned_duration_min?.toFixed(0) || '?'}min
+                                <span class="time">${time}</span>
+                            `;
+                            historyList.appendChild(div);
+                        });
+                    }
+                })
+                .catch(e => console.error(e));
+        }
+
+        function refreshTasks() {
+            fetch('/api/tasks')
+                .then(r => r.json())
+                .then(data => {
+                    const list = document.getElementById('taskList');
+                    list.innerHTML = '';
+                    if (data.tasks) {
+                        data.tasks.forEach((task, i) => {
+                            const div = document.createElement('div');
+                            div.className = 'task-item';
+                            const enabled = task.enabled !== false;
+                            div.innerHTML = `
+                                <div class="task-info">
+                                    <div class="task-name">${task.module.replace(/_/g, ' ')}</div>
+                                    <div class="task-detail">${task.app} | ${task.duration_min}min | ${task.targeting}</div>
+                                </div>
+                                <button class="toggle-btn ${enabled ? 'toggle-on' : 'toggle-off'}"
+                                        onclick="toggleTask(${i})">
+                                    ${enabled ? 'ON' : 'OFF'}
+                                </button>
+                            `;
+                            list.appendChild(div);
+                        });
+                    }
+                })
+                .catch(e => console.error(e));
+        }
+
+        // Initial load
+        refreshStatus();
+        refreshTasks();
+
+        // Auto-refresh every 5 seconds
+        setInterval(refreshStatus, 5000);
+        setInterval(refreshTasks, 15000);
+    </script>
+</body>
+</html>
