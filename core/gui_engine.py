@@ -134,8 +134,45 @@ class GUIEngine:
 
     # ─── Task Control ────────────────────────────────────────
 
+    def execute_sequence(self, sequence, context=None):
+        """
+        Execute a click sequence (list of step dicts).
+        Each step: type, template/x,y, seconds, label, etc.
+        """
+        context = context or {}
+        for i, step in enumerate(sequence):
+            step_type = step.get("type")
+            label = step.get("label", f"Step {i+1}")
+            logger.info(f"  [{i+1}/{len(sequence)}] {label}")
+
+            if step_type == "click":
+                if not self.click_element(step["template"]):
+                    logger.error(f"Step failed: {label}")
+                    return False
+
+            elif step_type == "click_xy":
+                self.click_position(step["x"], step["y"])
+
+            elif step_type == "wait":
+                seconds = step.get("seconds", 1.0)
+                # Add small random variation
+                seconds *= random.uniform(0.9, 1.2)
+                time.sleep(seconds)
+
+            elif step_type == "verify":
+                if not self.find_element(step["template"]):
+                    logger.error(f"Verify failed: {step['template']} not found")
+                    return False
+
+            else:
+                logger.warning(f"Unknown step type: {step_type}")
+
+        return True
+
     def start_task(self, app_name, module_name):
-        """Start a specific task in Housoft."""
+        """Start a specific task in Housoft using its defined click sequence."""
+        from core.click_sequences import get_start_sequence
+
         logger.info(f"Starting task: {app_name} -> {module_name}")
 
         # Step 1: Bring correct app to front
@@ -145,16 +182,14 @@ class GUIEngine:
 
         time.sleep(random.uniform(0.5, 1.0))
 
-        # Step 2: Click the module in sidebar
-        if not self.click_element(f"module_{module_name}"):
-            logger.error(f"Cannot find module: {module_name}")
+        # Step 2: Execute the module's start sequence
+        sequence = get_start_sequence(module_name)
+        if not sequence:
+            logger.error(f"No start sequence defined for: {module_name}")
             return False
 
-        time.sleep(random.uniform(0.5, 1.5))
-
-        # Step 3: Click OK button to start
-        if not self.click_element("btn_ok"):
-            logger.error("Cannot find OK button")
+        if not self.execute_sequence(sequence):
+            logger.error(f"Start sequence failed for: {module_name}")
             return False
 
         self.current_module = module_name
@@ -163,16 +198,17 @@ class GUIEngine:
         return True
 
     def stop_task(self):
-        """Stop the currently running task."""
+        """Stop the currently running task using the stop sequence."""
+        from core.click_sequences import get_stop_sequence
+
         logger.info("Stopping current task...")
 
         if not self.is_task_running:
             logger.info("No task is running")
             return True
 
-        # Click the Stop (Parar) button
-        if self.click_element("btn_parar"):
-            time.sleep(random.uniform(1.0, 2.0))
+        sequence = get_stop_sequence(self.current_module)
+        if self.execute_sequence(sequence):
             self.is_task_running = False
             logger.info(f"Task stopped: {self.current_module}")
             self.current_module = None

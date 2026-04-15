@@ -61,6 +61,12 @@ def dashboard():
     return render_template("dashboard.html")
 
 
+@app.route("/schedule-editor")
+@login_required
+def schedule_page():
+    return render_template("schedule.html")
+
+
 # ─── API Endpoints ───────────────────────────────────────
 
 @app.route("/api/status")

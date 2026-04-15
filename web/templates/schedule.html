@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Housoft Meta - Agendamento</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            padding: 16px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #333;
+        }
+        .header h1 { font-size: 20px; color: #e94560; }
+        .header .nav { display: flex; gap: 12px; }
+        .header a { color: #aaa; text-decoration: none; font-size: 14px; }
+        .header a:hover { color: #fff; }
+
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 16px;
+        }
+        .card h2 {
+            font-size: 14px;
+            color: #aaa;
+            text-transform: uppercase;
+            margin-bottom: 12px;
+        }
+
+        .hours-section {
+            display: grid;
+            grid-template-columns: 100px 1fr 1fr;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+        .hours-section label { color: #aaa; }
+        input[type="time"], input[type="number"] {
+            background: #0f3460;
+            border: 1px solid #333;
+            color: #eee;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 13px;
+            width: 100%;
+        }
+        input:focus { outline: none; border-color: #e94560; }
+
+        .slider-row {
+            margin-bottom: 14px;
+        }
+        .slider-row label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #aaa;
+            margin-bottom: 6px;
+        }
+        .slider-row input[type="range"] {
+            width: 100%;
+            accent-color: #e94560;
+        }
+        .slider-value {
+            color: #e94560;
+            font-weight: 600;
+        }
+
+        .toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            font-size: 14px;
+            border-bottom: 1px solid #222;
+        }
+        .toggle-row:last-child { border-bottom: none; }
+
+        .switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            background: #555;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .switch.on { background: #4ecdc4; }
+        .switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+        .switch.on::after { transform: translateX(20px); }
+
+        .btn-save {
+            width: 100%;
+            padding: 14px;
+            background: #4ecdc4;
+            color: #16213e;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .btn-save:active { opacity: 0.7; }
+
+        .saved-toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #4ecdc4;
+            color: #16213e;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .saved-toast.show { opacity: 1; }
+
+        .task-duration {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            font-size: 13px;
+        }
+        .task-duration .name { flex: 1; }
+        .task-duration input { width: 70px; }
+    </style>
+</head>
+<body>
+    <div class="saved-toast" id="saveToast">Salvo!</div>
+
+    <div class="header">
+        <h1>Agendamento</h1>
+        <div class="nav">
+            <a href="/">Dashboard</a>
+            <a href="/logout">Sair</a>
+        </div>
+    </div>
+
+    <!-- Active Hours -->
+    <div class="card">
+        <h2>Horarios de Atividade</h2>
+        <div class="hours-section">
+            <label>Pico 1</label>
+            <input type="time" id="peak1_start" value="08:00">
+            <input type="time" id="peak1_end" value="12:00">
+        </div>
+        <div class="hours-section">
+            <label>Pico 2</label>
+            <input type="time" id="peak2_start" value="14:00">
+            <input type="time" id="peak2_end" value="18:00">
+        </div>
+        <div class="hours-section">
+            <label>Moderado</label>
+            <input type="time" id="mod_start" value="12:00">
+            <input type="time" id="mod_end" value="22:00">
+        </div>
+        <div class="hours-section">
+            <label>Descanso</label>
+            <input type="time" id="off_start" value="22:00">
+            <input type="time" id="off_end" value="08:00">
+        </div>
+    </div>
+
+    <!-- Intensity -->
+    <div class="card">
+        <h2>Intensidade</h2>
+        <div class="slider-row">
+            <label>Pico <span class="slider-value" id="peakVal">100%</span></label>
+            <input type="range" id="peakSlider" min="0" max="100" step="5" value="100">
+        </div>
+        <div class="slider-row">
+            <label>Moderado <span class="slider-value" id="modVal">60%</span></label>
+            <input type="range" id="modSlider" min="0" max="100" step="5" value="60">
+        </div>
+    </div>
+
+    <!-- Randomization -->
+    <div class="card">
+        <h2>Aleatoriedade</h2>
+        <div class="toggle-row">
+            <span>Embaralhar ordem das tarefas</span>
+            <div class="switch on" id="shuffleSwitch" onclick="toggleSwitch(this)"></div>
+        </div>
+        <div class="slider-row" style="margin-top: 14px;">
+            <label>Delay entre tarefas (min): <span class="slider-value" id="delayVal">3 - 10</span></label>
+            <div style="display: flex; gap: 8px;">
+                <input type="number" id="delayMin" value="3" min="0" max="60" step="1">
+                <input type="number" id="delayMax" value="10" min="0" max="60" step="1">
+            </div>
+        </div>
+        <div class="slider-row">
+            <label>Variacao de duracao (%): <span class="slider-value" id="varyVal">20%</span></label>
+            <input type="range" id="varySlider" min="0" max="50" step="5" value="20">
+        </div>
+    </div>
+
+    <!-- Login Loop -->
+    <div class="card">
+        <h2>Login Loop</h2>
+        <div class="toggle-row">
+            <span>Executar a cada (horas)</span>
+            <input type="number" id="loginLoopHours" value="4" min="1" max="24" style="width: 70px;">
+        </div>
+    </div>
+
+    <!-- Task Durations -->
+    <div class="card">
+        <h2>Duracao das Tarefas (minutos)</h2>
+        <div id="taskDurations"></div>
+    </div>
+
+    <button class="btn-save" onclick="saveConfig()">Salvar Configuracoes</button>
+
+    <script>
+        let currentConfig = {};
+
+        function toggleSwitch(el) {
+            el.classList.toggle('on');
+        }
+
+        function showToast() {
+            const toast = document.getElementById('saveToast');
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2000);
+        }
+
+        function loadConfig() {
+            fetch('/api/schedule')
+                .then(r => r.json())
+                .then(config => {
+                    currentConfig = config;
+
+                    // Hours
+                    const schedule = config.schedule || {};
+                    if (schedule.peak_hours && schedule.peak_hours[0]) {
+                        document.getElementById('peak1_start').value = schedule.peak_hours[0][0];
+                        document.getElementById('peak1_end').value = schedule.peak_hours[0][1];
+                    }
+                    if (schedule.peak_hours && schedule.peak_hours[1]) {
+                        document.getElementById('peak2_start').value = schedule.peak_hours[1][0];
+                        document.getElementById('peak2_end').value = schedule.peak_hours[1][1];
+                    }
+                    if (schedule.moderate_hours && schedule.moderate_hours[0]) {
+                        document.getElementById('mod_start').value = schedule.moderate_hours[0][0];
+                        document.getElementById('mod_end').value = schedule.moderate_hours[0][1];
+                    }
+                    if (schedule.off_hours && schedule.off_hours[0]) {
+                        document.getElementById('off_start').value = schedule.off_hours[0][0];
+                        document.getElementById('off_end').value = schedule.off_hours[0][1];
+                    }
+
+                    // Intensity
+                    const intensity = config.intensity || {};
+                    document.getElementById('peakSlider').value = (intensity.peak || 1.0) * 100;
+                    document.getElementById('peakVal').textContent = Math.round((intensity.peak || 1.0) * 100) + '%';
+                    document.getElementById('modSlider').value = (intensity.moderate || 0.6) * 100;
+                    document.getElementById('modVal').textContent = Math.round((intensity.moderate || 0.6) * 100) + '%';
+
+                    // Randomization
+                    const r = config.randomization || {};
+                    document.getElementById('shuffleSwitch').classList.toggle('on', r.shuffle_task_order !== false);
+                    document.getElementById('delayMin').value = r.delay_between_tasks_min || 3;
+                    document.getElementById('delayMax').value = r.delay_between_tasks_max || 10;
+                    document.getElementById('varySlider').value = r.vary_duration_percent || 20;
+                    document.getElementById('varyVal').textContent = (r.vary_duration_percent || 20) + '%';
+
+                    // Login Loop
+                    const ll = config.login_loop_settings || {};
+                    document.getElementById('loginLoopHours').value = ll.run_every_hours || 4;
+
+                    // Task durations
+                    const list = document.getElementById('taskDurations');
+                    list.innerHTML = '';
+                    (config.tasks || []).forEach((task, i) => {
+                        const row = document.createElement('div');
+                        row.className = 'task-duration';
+                        row.innerHTML = `
+                            <span class="name">${task.display_name || task.module}</span>
+                            <input type="number" data-index="${i}" value="${task.duration_min}" min="5" max="120" step="5">
+                        `;
+                        list.appendChild(row);
+                    });
+                });
+        }
+
+        function saveConfig() {
+            // Gather all values and update config
+            const tasks = currentConfig.tasks || [];
+            document.querySelectorAll('.task-duration input').forEach(input => {
+                const idx = parseInt(input.dataset.index);
+                if (!isNaN(idx) && tasks[idx]) {
+                    tasks[idx].duration_min = parseInt(input.value);
+                }
+            });
+
+            const newConfig = {
+                ...currentConfig,
+                schedule: {
+                    peak_hours: [
+                        [document.getElementById('peak1_start').value, document.getElementById('peak1_end').value],
+                        [document.getElementById('peak2_start').value, document.getElementById('peak2_end').value]
+                    ],
+                    moderate_hours: [
+                        [document.getElementById('mod_start').value, document.getElementById('mod_end').value]
+                    ],
+                    off_hours: [
+                        [document.getElementById('off_start').value, document.getElementById('off_end').value]
+                    ]
+                },
+                intensity: {
+                    peak: parseInt(document.getElementById('peakSlider').value) / 100,
+                    moderate: parseInt(document.getElementById('modSlider').value) / 100,
+                    off: 0.0
+                },
+                randomization: {
+                    shuffle_task_order: document.getElementById('shuffleSwitch').classList.contains('on'),
+                    delay_between_tasks_min: parseFloat(document.getElementById('delayMin').value),
+                    delay_between_tasks_max: parseFloat(document.getElementById('delayMax').value),
+                    vary_duration_percent: parseInt(document.getElementById('varySlider').value)
+                },
+                login_loop_settings: {
+                    run_every_hours: parseInt(document.getElementById('loginLoopHours').value),
+                    do_not_interrupt: true
+                },
+                tasks: tasks
+            };
+
+            fetch('/api/schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newConfig)
+            })
+            .then(r => r.json())
+            .then(() => showToast())
+            .catch(e => alert('Erro ao salvar: ' + e));
+        }
+
+        // Live update slider labels
+        document.getElementById('peakSlider').addEventListener('input', (e) => {
+            document.getElementById('peakVal').textContent = e.target.value + '%';
+        });
+        document.getElementById('modSlider').addEventListener('input', (e) => {
+            document.getElementById('modVal').textContent = e.target.value + '%';
+        });
+        document.getElementById('varySlider').addEventListener('input', (e) => {
+            document.getElementById('varyVal').textContent = e.target.value + '%';
+        });
+        ['delayMin', 'delayMax'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => {
+                document.getElementById('delayVal').textContent =
+                    document.getElementById('delayMin').value + ' - ' + document.getElementById('delayMax').value;
+            });
+        });
+
+        loadConfig();
+    </script>
+</body>
+</html>
