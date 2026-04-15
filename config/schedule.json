@@ -1,59 +1,129 @@
 {
   "tasks": [
     {
-      "app": "insta",
-      "module": "enviar_direct",
-      "duration_min": 45,
-      "targeting": "local",
-      "enabled": true
-    },
-    {
-      "app": "face",
-      "module": "entrar_em_grupos",
-      "duration_min": 30,
-      "targeting": "local",
-      "enabled": true
-    },
-    {
       "app": "face",
       "module": "postar_nos_grupos",
+      "display_name": "Postar nos Grupos",
       "duration_min": 40,
       "targeting": "national",
+      "category": "posting",
       "enabled": true
     },
     {
       "app": "face",
       "module": "postar_no_mural",
+      "display_name": "Postar no Mural",
       "duration_min": 30,
       "targeting": "local",
+      "category": "posting",
       "enabled": true
     },
     {
       "app": "face",
       "module": "postar_aniversariantes",
+      "display_name": "Postar para Aniversariantes",
       "duration_min": 20,
       "targeting": "local",
+      "category": "posting",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "postar_marketplace",
+      "display_name": "Postar no Marketplace",
+      "duration_min": 35,
+      "targeting": "national",
+      "category": "posting",
       "enabled": true
     },
     {
       "app": "face",
       "module": "enviar_mensagem",
+      "display_name": "Enviar Mensagem",
       "duration_min": 35,
       "targeting": "local",
+      "category": "messaging",
       "enabled": true
     },
     {
       "app": "face",
-      "module": "curtir_pagina",
-      "duration_min": 20,
-      "targeting": "national",
+      "module": "responder_mensagem",
+      "display_name": "Responder Mensagem",
+      "duration_min": 30,
+      "targeting": "local",
+      "category": "messaging",
       "enabled": true
     },
     {
       "app": "face",
-      "module": "comentar_publicacao",
+      "module": "entrar_em_grupos",
+      "display_name": "Entrar em Grupos",
       "duration_min": 25,
       "targeting": "local",
+      "category": "growth",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "adicionar_amigos",
+      "display_name": "Adicionar Amigos",
+      "duration_min": 25,
+      "targeting": "local",
+      "category": "growth",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "curtir",
+      "display_name": "Curtir",
+      "duration_min": 20,
+      "targeting": "national",
+      "category": "engagement",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "compartilhar",
+      "display_name": "Compartilhar",
+      "duration_min": 20,
+      "targeting": "national",
+      "category": "engagement",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "paginas_eventos",
+      "display_name": "Paginas e Eventos",
+      "duration_min": 20,
+      "targeting": "national",
+      "category": "engagement",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "login_loop",
+      "display_name": "Login Loop",
+      "duration_min": 45,
+      "targeting": "local",
+      "category": "maintenance",
+      "enabled": true
+    },
+    {
+      "app": "face",
+      "module": "criar_lista",
+      "display_name": "Criar Lista",
+      "duration_min": 15,
+      "targeting": "local",
+      "category": "utility",
+      "enabled": false
+    },
+    {
+      "app": "insta",
+      "module": "enviar_direct",
+      "display_name": "Enviar Direct",
+      "duration_min": 45,
+      "targeting": "local",
+      "category": "messaging",
       "enabled": true
     }
   ],
@@ -72,5 +142,9 @@
     "peak": 1.0,
     "moderate": 0.6,
     "off": 0.0
+  },
+  "login_loop_settings": {
+    "run_every_hours": 4,
+    "do_not_interrupt": true
   }
 }

@@ -118,6 +118,33 @@
         .toggle-on { background: #4ecdc4; }
         .toggle-off { background: #555; }
 
+        /* Category badges */
+        .category-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-left: 6px;
+        }
+        .cat-posting { background: #e94560; }
+        .cat-messaging { background: #45b7d1; }
+        .cat-growth { background: #4ecdc4; }
+        .cat-engagement { background: #f9a825; color: #333; }
+        .cat-maintenance { background: #9b59b6; }
+        .cat-utility { background: #7f8c8d; }
+
+        .category-header {
+            font-size: 13px;
+            font-weight: 600;
+            color: #666;
+            text-transform: uppercase;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            padding-left: 4px;
+        }
+
         /* History */
         .history-item {
             background: #16213e;
@@ -211,7 +238,9 @@
 
                     const taskName = document.getElementById('currentTaskName');
                     if (data.current_task) {
-                        taskName.textContent = `${data.current_task.app} / ${data.current_task.module}`;
+                        const name = data.current_task.display_name || data.current_task.module;
+                        const cat = data.current_task.category || '';
+                        taskName.innerHTML = `${data.current_task.app.toUpperCase()} / ${name} <span class="category-badge cat-${cat}">${cat}</span>`;
                     } else {
                         taskName.textContent = 'None';
                     }
@@ -227,9 +256,13 @@
                             const div = document.createElement('div');
                             div.className = 'history-item';
                             const time = new Date(h.started_at).toLocaleTimeString();
+                            const name = h.display_name || h.task;
+                            const cat = h.category || '';
                             div.innerHTML = `
                                 <span class="history-status-${h.status}">${h.status}</span>
-                                ${h.app}/${h.task} - ${h.planned_duration_min?.toFixed(0) || '?'}min
+                                ${h.app.toUpperCase()} / ${name}
+                                <span class="category-badge cat-${cat}">${cat}</span>
+                                - ${h.planned_duration_min || '?'}min
                                 <span class="time">${time}</span>
                             `;
                             historyList.appendChild(div);
@@ -246,17 +279,41 @@
                     const list = document.getElementById('taskList');
                     list.innerHTML = '';
                     if (data.tasks) {
-                        data.tasks.forEach((task, i) => {
+                        const categoryOrder = ['maintenance', 'growth', 'posting', 'messaging', 'engagement', 'utility'];
+                        const categoryNames = {
+                            maintenance: 'Manutencao',
+                            growth: 'Crescimento',
+                            posting: 'Postagens',
+                            messaging: 'Mensagens',
+                            engagement: 'Engajamento',
+                            utility: 'Utilidades'
+                        };
+
+                        let lastCategory = '';
+                        const sorted = [...data.tasks].map((t, i) => ({...t, _index: i}));
+                        sorted.sort((a, b) => categoryOrder.indexOf(a.category || '') - categoryOrder.indexOf(b.category || ''));
+
+                        sorted.forEach(task => {
+                            const cat = task.category || 'other';
+                            if (cat !== lastCategory) {
+                                const header = document.createElement('div');
+                                header.className = 'category-header';
+                                header.innerHTML = `<span class="category-badge cat-${cat}">${categoryNames[cat] || cat}</span>`;
+                                list.appendChild(header);
+                                lastCategory = cat;
+                            }
+
                             const div = document.createElement('div');
                             div.className = 'task-item';
                             const enabled = task.enabled !== false;
+                            const name = task.display_name || task.module.replace(/_/g, ' ');
                             div.innerHTML = `
                                 <div class="task-info">
-                                    <div class="task-name">${task.module.replace(/_/g, ' ')}</div>
-                                    <div class="task-detail">${task.app} | ${task.duration_min}min | ${task.targeting}</div>
+                                    <div class="task-name">${name}</div>
+                                    <div class="task-detail">${task.app.toUpperCase()} | ${task.duration_min}min | ${task.targeting}</div>
                                 </div>
                                 <button class="toggle-btn ${enabled ? 'toggle-on' : 'toggle-off'}"
-                                        onclick="toggleTask(${i})">
+                                        onclick="toggleTask(${task._index})">
                                     ${enabled ? 'ON' : 'OFF'}
                                 </button>
                             `;

@@ -1,6 +1,7 @@
 """
 Task Scheduler & Orchestrator
 Manages task sequencing, randomization, intensity control, and time-based scheduling.
+Supports 12 Facebook modules + Instagram modules with category-based ordering.
 """
 
 import time
@@ -12,6 +13,17 @@ from pathlib import Path
 from threading import Thread, Event
 
 logger = logging.getLogger(__name__)
+
+
+# Task categories control execution order and grouping
+CATEGORY_PRIORITY = {
+    "maintenance": 0,   # Login Loop — runs first to warm up accounts
+    "growth": 1,        # Entrar em Grupos, Adicionar Amigos
+    "posting": 2,       # Postar nos Grupos, Mural, Marketplace, Aniversariantes
+    "messaging": 3,     # Enviar Mensagem, Responder Mensagem, Enviar Direct
+    "engagement": 4,    # Curtir, Compartilhar, Paginas e Eventos
+    "utility": 5,       # Criar Lista — runs periodically, not every cycle
+}
 
 
 class TaskOrchestrator:
@@ -28,6 +40,8 @@ class TaskOrchestrator:
         self._thread = None
         self.current_task = None
         self.task_history = []
+        self._cycle_count = 0
+        self._last_login_loop = None
         logger.info("TaskOrchestrator initialized")
 
     # ─── Config ──────────────────────────────────────────────
@@ -47,12 +61,12 @@ class TaskOrchestrator:
         """Return default configuration."""
         return {
             "tasks": [
-                {"app": "insta", "module": "enviar_direct", "duration_min": 45, "targeting": "local", "enabled": True},
-                {"app": "face", "module": "entrar_em_grupos", "duration_min": 30, "targeting": "local", "enabled": True},
-                {"app": "face", "module": "postar_nos_grupos", "duration_min": 40, "targeting": "national", "enabled": True},
-                {"app": "face", "module": "curtir_pagina", "duration_min": 20, "targeting": "national", "enabled": True},
-                {"app": "face", "module": "comentar_publicacao", "duration_min": 25, "targeting": "local", "enabled": True},
-                {"app": "face", "module": "enviar_mensagem", "duration_min": 35, "targeting": "local", "enabled": True},
+                {"app": "face", "module": "postar_nos_grupos", "display_name": "Postar nos Grupos", "duration_min": 40, "targeting": "national", "category": "posting", "enabled": True},
+                {"app": "face", "module": "postar_no_mural", "display_name": "Postar no Mural", "duration_min": 30, "targeting": "local", "category": "posting", "enabled": True},
+                {"app": "face", "module": "enviar_mensagem", "display_name": "Enviar Mensagem", "duration_min": 35, "targeting": "local", "category": "messaging", "enabled": True},
+                {"app": "face", "module": "entrar_em_grupos", "display_name": "Entrar em Grupos", "duration_min": 25, "targeting": "local", "category": "growth", "enabled": True},
+                {"app": "face", "module": "curtir", "display_name": "Curtir", "duration_min": 20, "targeting": "national", "category": "engagement", "enabled": True},
+                {"app": "insta", "module": "enviar_direct", "display_name": "Enviar Direct", "duration_min": 45, "targeting": "local", "category": "messaging", "enabled": True},
             ],
             "schedule": {
                 "peak_hours": [["08:00", "12:00"], ["14:00", "18:00"]],
@@ -69,6 +83,10 @@ class TaskOrchestrator:
                 "peak": 1.0,
                 "moderate": 0.6,
                 "off": 0.0
+            },
+            "login_loop_settings": {
+                "run_every_hours": 4,
+                "do_not_interrupt": True
             }
         }
 
@@ -84,6 +102,11 @@ class TaskOrchestrator:
         self.config.update(new_config)
         self.save_config()
         logger.info("Config updated")
+
+    def reload_config(self):
+        """Reload configuration from file."""
+        self.config = self._load_config()
+        logger.info("Config reloaded")
 
     # ─── Time & Intensity ────────────────────────────────────
 
@@ -119,15 +142,78 @@ class TaskOrchestrator:
         """Return list of enabled tasks."""
         return [t for t in self.config["tasks"] if t.get("enabled", True)]
 
+    def get_tasks_by_category(self, category):
+        """Return enabled tasks filtered by category."""
+        return [t for t in self.get_enabled_tasks() if t.get("category") == category]
+
+    def _should_run_login_loop(self):
+        """Check if it's time to run the Login Loop based on configured interval."""
+        settings = self.config.get("login_loop_settings", {})
+        interval_hours = settings.get("run_every_hours", 4)
+
+        if self._last_login_loop is None:
+            return True
+
+        elapsed = (datetime.now() - self._last_login_loop).total_seconds() / 3600
+        return elapsed >= interval_hours
+
     def build_task_queue(self):
-        """Build a randomized queue of tasks for the current cycle."""
-        tasks = self.get_enabled_tasks()
+        """
+        Build a smart task queue for the current cycle.
+        - Groups tasks by category
+        - Shuffles within each category
+        - Interleaves categories for natural behavior
+        - Inserts Login Loop periodically
+        - Runs utility tasks (Criar Lista) only every few cycles
+        """
+        enabled_tasks = self.get_enabled_tasks()
 
+        # Separate Login Loop and utility tasks from regular tasks
+        regular_tasks = [t for t in enabled_tasks if t.get("category") not in ("maintenance", "utility")]
+        login_loop_tasks = [t for t in enabled_tasks if t.get("category") == "maintenance"]
+        utility_tasks = [t for t in enabled_tasks if t.get("category") == "utility"]
+
+        # Build queue starting with Login Loop if due
+        queue = []
+
+        if login_loop_tasks and self._should_run_login_loop():
+            queue.extend(login_loop_tasks)
+            logger.info("Login Loop added to queue (periodic maintenance)")
+
+        # Group regular tasks by category and shuffle within each group
+        category_groups = {}
+        for task in regular_tasks:
+            cat = task.get("category", "posting")
+            if cat not in category_groups:
+                category_groups[cat] = []
+            category_groups[cat].append(task)
+
+        # Shuffle within each category
+        for cat in category_groups:
+            random.shuffle(category_groups[cat])
+
+        # Interleave categories: pick one task from each category in rotation
         if self.config["randomization"]["shuffle_task_order"]:
-            random.shuffle(tasks)
+            # Randomized interleaving
+            sorted_categories = sorted(category_groups.keys(),
+                                       key=lambda c: CATEGORY_PRIORITY.get(c, 99))
+            while any(category_groups[c] for c in sorted_categories if c in category_groups):
+                for cat in sorted_categories:
+                    if cat in category_groups and category_groups[cat]:
+                        queue.append(category_groups[cat].pop(0))
+        else:
+            # Sequential by category priority
+            for cat in sorted(category_groups.keys(),
+                              key=lambda c: CATEGORY_PRIORITY.get(c, 99)):
+                queue.extend(category_groups[cat])
 
-        logger.info(f"Task queue built: {[t['module'] for t in tasks]}")
-        return tasks
+        # Add utility tasks every 3 cycles
+        if utility_tasks and self._cycle_count % 3 == 0:
+            queue.extend(utility_tasks)
+            logger.info("Utility tasks added to queue (periodic)")
+
+        logger.info(f"Task queue built ({len(queue)} tasks): {[t['module'] for t in queue]}")
+        return queue
 
     def get_task_duration(self, task):
         """Get randomized duration for a task (in minutes)."""
@@ -136,9 +222,10 @@ class TaskOrchestrator:
         variation = base_duration * (vary_percent / 100)
         duration = random.uniform(base_duration - variation, base_duration + variation)
 
-        # Apply intensity multiplier
-        intensity = self.get_intensity_multiplier()
-        duration *= intensity
+        # Apply intensity multiplier (except for maintenance tasks)
+        if task.get("category") != "maintenance":
+            intensity = self.get_intensity_multiplier()
+            duration *= intensity
 
         return max(5, duration)  # Minimum 5 minutes
 
@@ -206,7 +293,11 @@ class TaskOrchestrator:
                 self._sleep(10)
                 continue
 
-            # Build and execute task queue
+            # Reload config in case it was changed via dashboard
+            self.reload_config()
+
+            # Build and execute task queue for this cycle
+            self._cycle_count += 1
             task_queue = self.build_task_queue()
 
             for task in task_queue:
@@ -220,10 +311,15 @@ class TaskOrchestrator:
                 if self._stop_event.is_set():
                     break
 
+                # Re-check intensity (time may have changed during cycle)
+                if self.get_intensity_multiplier() == 0:
+                    logger.info("Entered off-hours during cycle, stopping tasks")
+                    break
+
                 # Execute task
                 self._execute_task(task)
 
-                # Delay between tasks
+                # Delay between tasks (skip delay after Login Loop if configured)
                 if not self._stop_event.is_set():
                     delay = self.get_delay_between_tasks()
                     logger.info(f"Waiting {delay:.1f} minutes before next task")
@@ -236,16 +332,21 @@ class TaskOrchestrator:
         self.current_task = task
         module_name = task["module"]
         app_name = task["app"]
+        display_name = task.get("display_name", module_name)
+        category = task.get("category", "unknown")
         duration = self.get_task_duration(task)
 
-        logger.info(f"Executing: {app_name}/{module_name} for {duration:.0f} minutes")
+        logger.info(f"Executing: [{category}] {app_name}/{display_name} for {duration:.0f} minutes")
 
         # Record in history
         self.task_history.append({
             "task": module_name,
+            "display_name": display_name,
             "app": app_name,
+            "category": category,
+            "targeting": task.get("targeting", "local"),
             "started_at": datetime.now().isoformat(),
-            "planned_duration_min": duration,
+            "planned_duration_min": round(duration, 1),
             "status": "started"
         })
 
@@ -253,16 +354,26 @@ class TaskOrchestrator:
         if len(self.task_history) > 50:
             self.task_history = self.task_history[-50:]
 
+        # Track Login Loop timing
+        if category == "maintenance":
+            self._last_login_loop = datetime.now()
+
         # Start the task via GUI
         success = self.gui.switch_task(app_name, module_name)
 
         if not success:
-            logger.error(f"Failed to start task: {module_name}")
+            logger.error(f"Failed to start task: {display_name}")
             self.task_history[-1]["status"] = "failed"
             self.current_task = None
             return
 
         self.task_history[-1]["status"] = "running"
+
+        # Check if this task should not be interrupted (e.g., Login Loop)
+        do_not_interrupt = (
+            category == "maintenance"
+            and self.config.get("login_loop_settings", {}).get("do_not_interrupt", True)
+        )
 
         # Wait for task duration
         end_time = time.time() + (duration * 60)
@@ -273,13 +384,18 @@ class TaskOrchestrator:
                 logger.warning(f"Popup detected during task: {popup}")
                 self.gui.dismiss_popup()
 
+            # Don't break out of maintenance tasks even if paused
+            if self.is_paused and not do_not_interrupt:
+                break
+
             self._sleep(30)  # Check every 30 seconds
 
         # Stop the task
         if not self._stop_event.is_set():
             self.gui.stop_task()
             self.task_history[-1]["status"] = "completed"
-            logger.info(f"Task completed: {module_name}")
+            self.task_history[-1]["completed_at"] = datetime.now().isoformat()
+            logger.info(f"Task completed: {display_name}")
 
         self.current_task = None
 
@@ -299,5 +415,6 @@ class TaskOrchestrator:
             "intensity_multiplier": self.get_intensity_multiplier(),
             "task_history": self.task_history[-10:],
             "enabled_tasks_count": len(self.get_enabled_tasks()),
+            "cycle_count": self._cycle_count,
             "timestamp": datetime.now().isoformat()
         }
