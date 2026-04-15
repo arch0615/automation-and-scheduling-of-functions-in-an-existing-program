@@ -42,6 +42,7 @@ class TaskOrchestrator:
         self.task_history = []
         self._cycle_count = 0
         self._last_login_loop = None
+        self._check_interval_sec = 30  # How often to check within a task (patched for tests)
         logger.info("TaskOrchestrator initialized")
 
     # ─── Config ──────────────────────────────────────────────
@@ -215,6 +216,11 @@ class TaskOrchestrator:
         logger.info(f"Task queue built ({len(queue)} tasks): {[t['module'] for t in queue]}")
         return queue
 
+    # Minimum duration floor (seconds equivalent of 5 min default). Tests may lower this.
+    _min_duration_min = 5
+    # Whether to reload config from file on each cycle (disable for tests)
+    _reload_config_each_cycle = True
+
     def get_task_duration(self, task):
         """Get randomized duration for a task (in minutes)."""
         base_duration = task["duration_min"]
@@ -227,7 +233,7 @@ class TaskOrchestrator:
             intensity = self.get_intensity_multiplier()
             duration *= intensity
 
-        return max(5, duration)  # Minimum 5 minutes
+        return max(self._min_duration_min, duration)
 
     def get_delay_between_tasks(self):
         """Get random delay between task switches (in minutes)."""
@@ -294,7 +300,8 @@ class TaskOrchestrator:
                 continue
 
             # Reload config in case it was changed via dashboard
-            self.reload_config()
+            if self._reload_config_each_cycle:
+                self.reload_config()
 
             # Build and execute task queue for this cycle
             self._cycle_count += 1
@@ -388,7 +395,7 @@ class TaskOrchestrator:
             if self.is_paused and not do_not_interrupt:
                 break
 
-            self._sleep(30)  # Check every 30 seconds
+            self._sleep(self._check_interval_sec)
 
         # Stop the task
         if not self._stop_event.is_set():
