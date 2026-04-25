@@ -64,7 +64,8 @@ CAPTURE_LIST = [
 
     # ═══ Task control buttons (need a task running) ═══
     ("btn_parar",                "Start a task, then hover over the red 'Parar' button", (60, 40)),
-    ("btn_pausa",                "Hover over the yellow 'Pausa' button",          (60, 40)),
+    ("btn_pausa",                "Hover over the blue 'Pausa' button",            (60, 40)),
+    ("btn_continuar",            "If task is paused, hover over blue 'Cont.' button", (60, 40)),
 
     # ═══ Instagram modules (need Housoft Insta open) ═══
     ("module_enviar_direct",     "Switch to Housoft Insta, hover over 'Enviar Direct'", TALL_CROP_SIZE),
