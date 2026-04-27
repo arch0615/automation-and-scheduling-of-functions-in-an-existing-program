@@ -33,9 +33,10 @@ def main():
     logger.info("Housoft Meta-Automation System starting...")
     logger.info("=" * 60)
 
-    # Initialize GUI Engine
-    from core.gui_engine import GUIEngine
-    gui = GUIEngine()
+    # Initialize GUI Engine — Vision-driven (resolution-independent via Claude API).
+    # Falls back to pywinauto then template matching if Vision is unavailable.
+    from core.vision_engine import VisionGUIEngine
+    gui = VisionGUIEngine()
 
     # Initialize Orchestrator
     from orchestrator.scheduler import TaskOrchestrator

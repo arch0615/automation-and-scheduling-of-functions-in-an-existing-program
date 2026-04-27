@@ -180,7 +180,7 @@ def run_test(resolver: VisionResolver, image_rel: str, elements: list[str], grou
             gx, gy = ground_truth[el.name]
             err = ((el.x - gx) ** 2 + (el.y - gy) ** 2) ** 0.5
             gt_str = f"  (expected ({gx},{gy}), error={err:.0f}px)"
-        status = "✓" if el.found else "✗ NOT FOUND"
+        status = "[OK]" if el.found else "[MISS]"
         print(f"    {status} {el.name:<20} ({el.x:4d},{el.y:4d}) conf={el.confidence:.2f}{gt_str}")
 
     out = annotate(image_path, result, ground_truth)
