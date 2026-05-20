@@ -41,3 +41,10 @@ templates/*.jpg
 
 # Byte-compiled
 *.pyc
+
+# Recovered files from HousoftMeta_Setup.exe — may contain secrets (.env), never commit
+_recovered/
+HousoftMeta_Setup.exe
+
+_build/
+.claude/

@@ -1,0 +1,101 @@
+================================================================
+  HOUSOFT META — Sistema de Automacao
+================================================================
+
+OBRIGADO POR INSTALAR!
+
+================================================================
+  ATENCAO — CHAVE DA API ANTHROPIC (OBRIGATORIA)
+================================================================
+
+Este programa usa o motor de Visao da Anthropic para reconhecer os
+botoes do Housoft em QUALQUER resolucao de tela. Por isso, voce
+PRECISA de uma chave da API Anthropic para o programa funcionar
+em diferentes computadores e resolucoes.
+
+ONDE A CHAVE DEVE SER COLOCADA:
+  -> Arquivo .env dentro da pasta de instalacao do programa.
+     Por padrao:
+        %LOCALAPPDATA%\HousoftMeta\.env
+
+  -> Abra esse arquivo com o Bloco de Notas e procure a linha:
+        ANTHROPIC_API_KEY=
+
+  -> Cole sua chave logo apos o sinal de igual, sem espacos.
+     Exemplo:
+        ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+COMO OBTER A CHAVE:
+  1. Acesse https://console.anthropic.com/
+  2. Faca login (ou crie uma conta)
+  3. Va em "API Keys" e clique "Create Key"
+  4. Copie a chave gerada (comeca com "sk-ant-...")
+  5. Cole no .env conforme acima
+
+OBSERVACAO: durante a instalacao deste programa, foi exibida uma
+tela onde voce ja pode ter colocado a chave. Se sim, ela ja esta
+configurada — basta iniciar o programa.
+
+================================================================
+  PRE-REQUISITOS
+================================================================
+
+Este programa NAO substitui o Housoft. Ele controla o Housoft
+automaticamente.
+
+Voce precisa ter instalado SEPARADAMENTE:
+  - Housoft Face   (para Facebook)
+  - Housoft Insta  (para Instagram)
+
+Sem o Housoft, este programa nao tem o que controlar.
+
+================================================================
+  PRIMEIRA EXECUCAO
+================================================================
+
+1) Abra o Housoft Face e/ou Housoft Insta (faca login normalmente).
+2) Clique no atalho "Housoft Meta" (area de trabalho ou menu Iniciar).
+3) Aparecera uma janela preta (terminal) mostrando enderecos como:
+        Local URL:  http://localhost:5000
+        Mobile URL: https://xxx.ngrok-free.dev
+4) Abra o endereco no navegador (PC) ou no celular (link ngrok).
+5) Faca login:
+        Usuario: admin
+        Senha:   admin123
+   (TROQUE A SENHA depois — veja CONFIGURACAO abaixo.)
+6) Clique em "Start" no painel para iniciar a automacao.
+
+================================================================
+  CONFIGURACAO COMPLETA (.env)
+================================================================
+
+Edite "%LOCALAPPDATA%\HousoftMeta\.env" para alterar:
+
+  ANTHROPIC_API_KEY  -> chave da API (OBRIGATORIA, ver acima)
+  DASHBOARD_USERNAME -> usuario do painel
+  DASHBOARD_PASSWORD -> senha do painel
+  NGROK_AUTH_TOKEN   -> token ngrok (acesso pelo celular)
+  FLASK_PORT         -> porta local (padrao 5000)
+  FLASK_SECRET_KEY   -> chave secreta da sessao
+
+================================================================
+  PROBLEMAS COMUNS
+================================================================
+
+- "O programa nao reconhece os botoes do Housoft":
+  Verifique se a chave ANTHROPIC_API_KEY foi configurada corretamente
+  no arquivo .env.
+
+- "A janela do Housoft esta minimizada":
+  O robo precisa que a janela do Housoft esteja VISIVEL na tela.
+  Nao minimize.
+
+- Logs detalhados em:
+  %LOCALAPPDATA%\HousoftMeta\logs\housoft_meta.log
+
+================================================================
+  SUPORTE
+================================================================
+
+Em caso de duvida, contate o desenvolvedor.
+================================================================

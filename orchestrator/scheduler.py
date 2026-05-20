@@ -9,8 +9,9 @@ import random
 import logging
 import json
 from datetime import datetime
-from pathlib import Path
 from threading import Thread, Event
+
+from core.app_paths import config_dir
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ CATEGORY_PRIORITY = {
 class TaskOrchestrator:
     """Orchestrates Housoft tasks based on schedule and randomization rules."""
 
-    CONFIG_PATH = Path(__file__).parent.parent / "config" / "schedule.json"
+    CONFIG_PATH = config_dir() / "schedule.json"
 
     def __init__(self, gui_engine):
         self.gui = gui_engine
@@ -365,8 +366,12 @@ class TaskOrchestrator:
         if category == "maintenance":
             self._last_login_loop = datetime.now()
 
+        # Build the runtime context (dynamic values consumed by the start sequence —
+        # e.g. the rotating search keyword for entrar_em_grupos).
+        context = self._build_task_context(task)
+
         # Start the task via GUI
-        success = self.gui.switch_task(app_name, module_name)
+        success = self.gui.switch_task(app_name, module_name, context=context)
 
         if not success:
             logger.error(f"Failed to start task: {display_name}")
@@ -410,10 +415,65 @@ class TaskOrchestrator:
         """Sleep that can be interrupted by stop event."""
         self._stop_event.wait(timeout=seconds)
 
+    # ─── Per-task context (runtime parameters for click sequences) ──
+
+    def _build_task_context(self, task):
+        """Build a context dict for the click sequence to consume.
+
+        For most modules this is empty. For modules that prompt for input
+        (e.g. entrar_em_grupos's "Pesquisar" dialog), we inject a keyword
+        rotated across cycles so the bot doesn't get stuck on an empty
+        search field. Per-task `search_keywords` in schedule.json win over
+        the per-module defaults in click_sequences.MODULE_SEQUENCES.
+        """
+        context = {}
+        if task["module"] == "entrar_em_grupos":
+            keywords = self._search_keywords_for(task)
+            if keywords:
+                term = keywords[self._cycle_count % len(keywords)]
+                context["search_term"] = self._substitute_placeholders(term)
+                logger.info(f"entrar_em_grupos search term for this cycle: {context['search_term']!r}")
+            else:
+                logger.warning("entrar_em_grupos has no search keywords configured — task may stall")
+        return context
+
+    def _search_keywords_for(self, task):
+        """Resolve the keyword list for a task: task-level override → module default."""
+        keywords = task.get("search_keywords")
+        if keywords:
+            return list(keywords)
+        from core.click_sequences import get_targeting_config
+        targeting_cfg = get_targeting_config(task["module"], task.get("targeting", "local"))
+        return list(targeting_cfg.get("keywords", []))
+
+    def _substitute_placeholders(self, term):
+        """Replace [cidade] (and other config placeholders) inside a keyword string."""
+        city = self.config.get("city", "")
+        return term.replace("[cidade]", city).strip()
+
+    # ─── Foreground management ──────────────────────────────
+
+    def ensure_foreground(self, app_name="face"):
+        """Bring Housoft to the foreground; safe to call from the web request thread.
+
+        Used at app startup and whenever the user clicks Start in the dashboard,
+        so the bot's first interaction isn't with whatever window happened to
+        be on top (browser, Explorer, etc.).
+        """
+        if hasattr(self.gui, "ensure_foreground"):
+            return self.gui.ensure_foreground(app_name)
+        return self.gui.bring_to_front(app_name)
+
     # ─── Status ──────────────────────────────────────────────
 
     def get_status(self):
         """Return current status for the dashboard."""
+        focus_status = None
+        if hasattr(self.gui, "get_focus_status"):
+            try:
+                focus_status = self.gui.get_focus_status()
+            except Exception as e:
+                logger.warning(f"get_focus_status raised: {e}")
         return {
             "is_running": self.is_running,
             "is_paused": self.is_paused,
@@ -423,5 +483,6 @@ class TaskOrchestrator:
             "task_history": self.task_history[-10:],
             "enabled_tasks_count": len(self.get_enabled_tasks()),
             "cycle_count": self._cycle_count,
+            "focus_status": focus_status,
             "timestamp": datetime.now().isoformat()
         }

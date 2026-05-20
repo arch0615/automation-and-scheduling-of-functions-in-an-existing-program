@@ -45,6 +45,42 @@ def start_module_sequence(module_key):
     ]
 
 
+# Start a module whose dialog has an inline 'Pesquisar' button that must be
+# clicked to load/validate the saved content (e.g. a page link) before the
+# footer Ok will accept the form. The text field is left at whatever Housoft
+# remembered from Valesca's last session.
+# Reported by Miguel for paginas_eventos / "Promover página" — 2026-05-18.
+def start_search_then_ok_sequence(module_key):
+    pos = MODULE_POSITIONS[module_key]
+    return [
+        {"type": "click_xy", "x": pos[0], "y": pos[1], "label": f"Open {module_key}"},
+        {"type": "wait", "seconds": 1.5, "label": "Wait for dialog to open"},
+        {"type": "click", "template": "btn_pesquisar_inline",
+         "label": "Click inline Pesquisar to load the saved page/link"},
+        {"type": "wait", "seconds": 4.0, "label": "Wait for page to load in dialog"},
+        {"type": "click", "template": "btn_ok",
+         "label": "Click footer OK to commit and start task"},
+        {"type": "wait", "seconds": 2.0, "label": "Wait for task to start"},
+    ]
+
+
+# Start a module that opens a search dialog (Pesquisar) before the module runs.
+# The dialog REQUIRES a search term — clicking Ok with the field empty leaves
+# the bot stuck on this screen (reported by Miguel, 2026-05-12).
+def start_search_module_sequence(module_key, search_term):
+    pos = MODULE_POSITIONS[module_key]
+    return [
+        {"type": "click_xy", "x": pos[0], "y": pos[1], "label": f"Open {module_key}"},
+        {"type": "wait", "seconds": 1.5, "label": "Wait for Pesquisar dialog to open"},
+        {"type": "type", "template": "search_input", "text": search_term,
+         "press_enter": True, "clear_first": True,
+         "label": f"Type search term and submit: {search_term!r}"},
+        {"type": "wait", "seconds": 3.5, "label": "Wait for search results to populate"},
+        {"type": "click", "template": "btn_ok", "label": "Click OK to commit search & start task"},
+        {"type": "wait", "seconds": 2.0, "label": "Wait for task to start"},
+    ]
+
+
 # Stop current task: click Parar button at top
 STOP_SEQUENCE = [
     {"type": "click", "template": "btn_parar", "label": "Click Parar to stop task"},
@@ -112,7 +148,9 @@ MODULE_SEQUENCES = {
         "display_name": "Paginas e Eventos",
         "description": "Like pages, invite friends to events",
         "tabs": ["Criterio", "Convites"],
-        "start_sequence": start_module_sequence("paginas_eventos"),
+        # The "Promover página" dialog needs the inline Pesquisar clicked to
+        # actually load the saved page link before footer Ok will work.
+        "start_sequence": start_search_then_ok_sequence("paginas_eventos"),
         "stop_sequence": STOP_SEQUENCE,
         "targeting_options": {
             "local": {"invite_scope": "amigos_proximos"},
@@ -150,7 +188,12 @@ MODULE_SEQUENCES = {
         "display_name": "Entrar em Grupos",
         "description": "Join Facebook groups by keyword search",
         "tabs": ["Criterio", "Opcoes"],
-        "start_sequence": start_module_sequence("entrar_em_grupos"),
+        # Dynamic: the orchestrator passes a `search_term` in the context dict.
+        # The lambda is invoked by get_start_sequence() at task-start time so we
+        # can rotate through a keyword list across cycles.
+        "start_sequence": lambda ctx: start_search_module_sequence(
+            "entrar_em_grupos", ctx.get("search_term", "")
+        ),
         "stop_sequence": STOP_SEQUENCE,
         "targeting_options": {
             "local": {"keywords": ["maes [cidade]", "pais [cidade]", "educacao [cidade]"]},
@@ -236,10 +279,21 @@ def get_sequence(module_key):
     return MODULE_SEQUENCES.get(module_key)
 
 
-def get_start_sequence(module_key):
-    """Get just the start sequence."""
+def get_start_sequence(module_key, context=None):
+    """Get the start sequence for a module.
+
+    Some modules (like entrar_em_grupos, which requires a search term) have
+    a callable as their `start_sequence` — it's invoked here with the runtime
+    context so the orchestrator can inject dynamic values like keywords.
+    Static modules return their list verbatim.
+    """
     seq = MODULE_SEQUENCES.get(module_key)
-    return seq["start_sequence"] if seq else None
+    if not seq:
+        return None
+    start = seq["start_sequence"]
+    if callable(start):
+        return start(context or {})
+    return start
 
 
 def get_stop_sequence(module_key):

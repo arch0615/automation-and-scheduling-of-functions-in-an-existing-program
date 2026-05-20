@@ -83,6 +83,12 @@ def api_status():
 def api_start():
     """Start the orchestrator."""
     if orchestrator:
+        # Bring Housoft to the front BEFORE kicking off the loop, otherwise the
+        # first interaction may happen while the browser still has focus.
+        try:
+            orchestrator.ensure_foreground()
+        except Exception as e:
+            logger.warning(f"ensure_foreground failed (continuing anyway): {e}")
         orchestrator.start()
         return jsonify({"status": "started"})
     return jsonify({"error": "Orchestrator not initialized"}), 500

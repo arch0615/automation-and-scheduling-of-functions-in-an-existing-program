@@ -65,9 +65,11 @@ class MockGUIEngine:
 
     # ─── Task Control ────────────────────────────────────────
 
-    def start_task(self, app_name, module_name):
+    def start_task(self, app_name, module_name, context=None):
         """Simulate starting a task."""
         self._log_action("start_task", f"{app_name}/{module_name}")
+        if context:
+            self._log_action("task_context", str(context))
 
         # Simulate focus
         if not self.bring_to_front(app_name):
@@ -100,7 +102,7 @@ class MockGUIEngine:
         self.current_module = None
         return True
 
-    def switch_task(self, app_name, module_name):
+    def switch_task(self, app_name, module_name, context=None):
         """Simulate switching to a new task."""
         self._log_action("switch_task", f"{app_name}/{module_name}")
 
@@ -109,7 +111,20 @@ class MockGUIEngine:
                 return False
             self._delay(2.0, 4.0)
 
-        return self.start_task(app_name, module_name)
+        return self.start_task(app_name, module_name, context=context)
+
+    def ensure_foreground(self, app_name="face"):
+        """Simulate bringing Housoft to the foreground."""
+        return self.bring_to_front(app_name)
+
+    def get_focus_status(self):
+        """Mock focus status — always healthy (mock doesn't simulate focus failures)."""
+        return {
+            "ok": True,
+            "consecutive_failures": 0,
+            "last_success_at": time.time(),
+            "last_failure": None,
+        }
 
     # ─── State Detection ─────────────────────────────────────
 

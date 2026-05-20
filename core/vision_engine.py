@@ -26,16 +26,16 @@ import logging
 import os
 import random
 import time
-from pathlib import Path
 from typing import Optional
 
 import cv2
 import numpy as np
 import pyautogui
-from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+from core.app_paths import load_env_file, templates_dir
+
+load_env_file()
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,7 @@ ELEMENT_DESCRIPTIONS: dict[str, str] = {
     "btn_ok":        "The green 'Ok' button at the bottom of a Housoft module dialog — green diamond icon with 'Ok' text.",
     "btn_ajuda":     "The blue 'Ajuda' (Help) button at the bottom of a Housoft module dialog — blue help-bubble icon with 'Ajuda' text.",
     "btn_cancelar":  "The red 'Cancelar' (Cancel) button at the bottom of a Housoft module dialog — red diamond icon with 'Cancelar' text.",
+    "btn_pesquisar_inline": "The 'Pesquisar' button INSIDE a Housoft module dialog's content area — NOT the footer Ok/Cancelar buttons. It has a yellow folder/file icon next to the word 'Pesquisar' and is positioned inside the 'Critério' section, typically below a text input. Used to LOAD or SEARCH content before confirming with Ok.",
 
     # Dialog tabs
     "tab_criterio":  "The 'Critério' tab at the top of a module dialog (selects targeting criteria).",
@@ -86,6 +87,9 @@ ELEMENT_DESCRIPTIONS: dict[str, str] = {
 
     # Instagram module buttons
     "module_enviar_direct":      "The 'Enviar direct' module button in the Housoft Insta top toolbar — envelope icon.",
+
+    # Dialog inputs (text fields users fill in)
+    "search_input":  "The text input field in the Housoft 'Pesquisar' (Search) dialog, located on the 'Termo' tab below the label 'Digite um termo de pesquisa ou link e tecle Enter'. It is the empty text entry box where a keyword is typed.",
 
     # Popups (state detection & dismissal)
     "popup_error":      "An error popup dialog (red icon, error message).",
@@ -145,12 +149,10 @@ class VisionResolver:
             self.client = None
             self.available = False
         self.model = model
-        # Cache: (screenshot_hash, element_name) -> (x, y, confidence)
         self._cache: dict[tuple[str, str], tuple[int, int, float]] = {}
 
     @staticmethod
     def _hash_image(img: np.ndarray) -> str:
-        # Downsample to 64x64 for hash stability against tiny pixel noise
         small = cv2.resize(img, (64, 64))
         return hashlib.md5(small.tobytes()).hexdigest()
 
@@ -236,7 +238,7 @@ class VisionResolver:
     def verify_state(self, screenshot: np.ndarray, expected: str) -> bool:
         """Ask Claude whether the screenshot shows the expected state."""
         if not self.available:
-            return True  # No verification when Vision unavailable
+            return True
 
         prompt = (
             f"Does this screenshot match the following expected UI state?\n\n"
@@ -286,7 +288,7 @@ class VisionResolver:
 # ─────────────────────────────────────────────────────────────────────────────
 # Fallback: classic template matching (uses files in templates/)
 # ─────────────────────────────────────────────────────────────────────────────
-_TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+_TEMPLATES_DIR = templates_dir()
 
 
 def _template_find(screenshot: np.ndarray, name: str, confidence: float) -> Optional[tuple[int, int, float]]:
@@ -350,6 +352,12 @@ class VisionGUIEngine:
         self._window_cache: dict[str, object] = {}
         self.vision = VisionResolver(model=vision_model)
         self.enable_verification = enable_verification
+        # Foreground health tracking — surfaced via get_focus_status() so the
+        # dashboard can warn Miguel when Housoft is hidden/obscured/closed.
+        self._focus_ok: bool = True
+        self._focus_consecutive_failures: int = 0
+        self._focus_last_success_ts: Optional[float] = None
+        self._focus_last_failure: Optional[dict] = None
         logger.info(
             f"VisionGUIEngine initialized (vision_available={self.vision.available}, "
             f"verification={enable_verification})"
@@ -372,17 +380,87 @@ class VisionGUIEngine:
             logger.error(f"Error finding window: {e}")
             return None
 
-    def bring_to_front(self, app_name: str) -> bool:
+    def bring_to_front(self, app_name: str, retries: int = 3) -> bool:
+        """Force Housoft window to the foreground; verify via Win32 GetForegroundWindow."""
         window = self.find_window(app_name)
+        app_label = "Housoft Face" if app_name == "face" else "Housoft Insta"
         if not window:
+            self._record_focus_failure(
+                "window_not_found",
+                f"Janela do {app_label} não foi encontrada — verifique se ele está aberto.",
+            )
             return False
-        try:
-            window.set_focus()
+
+        for attempt in range(retries):
+            try:
+                if window.is_minimized():
+                    window.restore()
+                window.set_focus()
+                time.sleep(0.4)
+                if self._is_window_foreground(app_name):
+                    self.current_app = app_name
+                    self._record_focus_success()
+                    return True
+                logger.info(
+                    f"bring_to_front attempt {attempt + 1}/{retries}: "
+                    f"{app_name} not yet frontmost"
+                )
+            except Exception as e:
+                logger.error(f"bring_to_front error (attempt {attempt + 1}): {e}")
             time.sleep(0.5)
-            self.current_app = app_name
-            return True
-        except Exception as e:
-            logger.error(f"Error bringing window to front: {e}")
+
+        logger.warning(
+            f"Could not bring {app_name} to foreground after {retries} attempts"
+        )
+        self._record_focus_failure(
+            "not_foreground",
+            f"{app_label} está obstruído por outra janela — coloque-o em primeiro plano.",
+        )
+        self.current_app = app_name
+        return False
+
+    # ─── Focus-health bookkeeping (surfaced on the dashboard) ─────────
+
+    def _record_focus_success(self) -> None:
+        self._focus_ok = True
+        self._focus_consecutive_failures = 0
+        self._focus_last_success_ts = time.time()
+        self._focus_last_failure = None
+
+    def _record_focus_failure(self, kind: str, message: str) -> None:
+        self._focus_ok = False
+        self._focus_consecutive_failures += 1
+        self._focus_last_failure = {"kind": kind, "message": message, "at": time.time()}
+
+    def get_focus_status(self) -> dict:
+        """Snapshot of Housoft foreground health for the /api/status endpoint."""
+        return {
+            "ok": self._focus_ok,
+            "consecutive_failures": self._focus_consecutive_failures,
+            "last_success_at": self._focus_last_success_ts,
+            "last_failure": self._focus_last_failure,
+        }
+
+    @staticmethod
+    def _is_window_foreground(app_name: str) -> bool:
+        """Win32 check: is the Housoft window the frontmost window right now?
+
+        Prevents the bot from screenshotting/clicking the Chrome dashboard,
+        File Explorer, or any other window that may have stolen focus.
+        """
+        try:
+            import ctypes
+            user32 = ctypes.windll.user32
+            hwnd = user32.GetForegroundWindow()
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length <= 0:
+                return False
+            buf = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(hwnd, buf, length + 1)
+            title = (buf.value or "").lower()
+            search = "housoft face" if app_name == "face" else "housoft insta"
+            return search in title
+        except Exception:
             return False
 
     # ─── Screen capture ──────────────────────────────────────
@@ -390,29 +468,83 @@ class VisionGUIEngine:
     def take_screenshot(self) -> np.ndarray:
         return cv2.cvtColor(np.array(pyautogui.screenshot()), cv2.COLOR_RGB2BGR)
 
+    def _focused_screenshot(self, app_name: str) -> Optional[tuple[np.ndarray, int, int]]:
+        """Force-focus Housoft and screenshot only its window region.
+
+        Returns (cropped_bgr, left, top) — coords inside the crop need
+        (left, top) added back to translate to screen space. Returns None
+        if focusing or capturing fails (caller should fall back to full-screen).
+        """
+        window = self.find_window(app_name)
+        if not window:
+            return None
+        try:
+            if window.is_minimized():
+                window.restore()
+            window.set_focus()
+            time.sleep(0.25)
+
+            if not self._is_window_foreground(app_name):
+                window.set_focus()
+                time.sleep(0.4)
+                if not self._is_window_foreground(app_name):
+                    logger.info(
+                        f"_focused_screenshot: {app_name} still not frontmost "
+                        f"— falling back to full-screen capture"
+                    )
+                    return None
+
+            rect = window.rectangle()
+            left, top = rect.left, rect.top
+            width, height = rect.width(), rect.height()
+            if width <= 0 or height <= 0:
+                return None
+
+            pil_img = pyautogui.screenshot(region=(left, top, width, height))
+            img_bgr = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+            return (img_bgr, left, top)
+        except Exception as e:
+            logger.error(f"_focused_screenshot failed: {e}")
+            return None
+
     # ─── Element resolution (the fallback chain) ─────────────
 
     def find_element(self, template_name: str, confidence: float = 0.7) -> Optional[tuple[int, int]]:
-        """Find an element using the fallback chain. Returns (x, y) or None."""
-        screenshot = self.take_screenshot()
+        """Find an element using the fallback chain. Returns (x, y) or None.
+
+        When `current_app` is set, prefers a focused, window-cropped screenshot
+        so Vision physically cannot see the dashboard or any other application.
+        Falls back to full-screen capture if focusing fails.
+        """
+        offset_x, offset_y = 0, 0
+        screenshot = None
+
+        if self.current_app:
+            focused = self._focused_screenshot(self.current_app)
+            if focused is not None:
+                screenshot, offset_x, offset_y = focused
+
+        if screenshot is None:
+            screenshot = self.take_screenshot()
 
         # 1. Vision API
         hit = self.vision.find(screenshot, template_name)
         if hit:
-            return (hit[0], hit[1])
+            return (hit[0] + offset_x, hit[1] + offset_y)
 
-        # 2. pywinauto by accessibility name
+        # 2. pywinauto by accessibility name (returns absolute screen coords)
         if self.current_app and self.current_app in self._window_cache:
             hit = _pywinauto_find(self._window_cache[self.current_app], template_name)
             if hit:
                 logger.info(f"pywinauto found '{template_name}' at ({hit[0]},{hit[1]})")
                 return (hit[0], hit[1])
 
-        # 3. Classic template matching
+        # 3. Classic template matching (operates on the same screenshot)
         hit = _template_find(screenshot, template_name, confidence)
         if hit:
-            logger.info(f"Template matched '{template_name}' at ({hit[0]},{hit[1]}) conf={hit[2]:.2f}")
-            return (hit[0], hit[1])
+            sx, sy = hit[0] + offset_x, hit[1] + offset_y
+            logger.info(f"Template matched '{template_name}' at ({sx},{sy}) conf={hit[2]:.2f}")
+            return (sx, sy)
 
         logger.warning(f"All resolvers failed for '{template_name}'")
         return None
@@ -441,6 +573,18 @@ class VisionGUIEngine:
         pyautogui.click(x + ox, y + oy)
         time.sleep(random.uniform(0.3, 0.7))
 
+    def type_text(self, text: str, press_enter: bool = False, clear_first: bool = True) -> None:
+        """Type into the currently focused field with human-like cadence."""
+        if clear_first:
+            pyautogui.hotkey("ctrl", "a")
+            time.sleep(0.1)
+            pyautogui.press("delete")
+            time.sleep(0.1)
+        pyautogui.write(text, interval=random.uniform(0.04, 0.09))
+        if press_enter:
+            time.sleep(random.uniform(0.25, 0.5))
+            pyautogui.press("enter")
+
     # ─── Sequence execution ──────────────────────────────────
 
     def execute_sequence(self, sequence: list, context: dict | None = None) -> bool:
@@ -458,6 +602,25 @@ class VisionGUIEngine:
                 self.click_position(step["x"], step["y"])
             elif step_type == "wait":
                 time.sleep(step.get("seconds", 1.0) * random.uniform(0.9, 1.2))
+            elif step_type == "type":
+                # Focus the target input field (if a template is given), then type.
+                template = step.get("template")
+                if template:
+                    pos = self.find_element(template)
+                    if not pos:
+                        logger.error(f"Step failed: input field '{template}' not found")
+                        return False
+                    self.click_position(pos[0], pos[1])
+                    time.sleep(0.3)
+                text = step.get("text", "")
+                if not text:
+                    logger.warning(f"'type' step has empty text — skipping: {label}")
+                    continue
+                self.type_text(
+                    text,
+                    press_enter=step.get("press_enter", False),
+                    clear_first=step.get("clear_first", True),
+                )
             elif step_type == "verify":
                 if not self.find_element(step["template"]):
                     logger.error(f"Verify failed: {step['template']} not found")
@@ -468,15 +631,15 @@ class VisionGUIEngine:
 
     # ─── Task orchestration ──────────────────────────────────
 
-    def start_task(self, app_name: str, module_name: str) -> bool:
+    def start_task(self, app_name: str, module_name: str, context: dict | None = None) -> bool:
         from core.click_sequences import get_start_sequence
 
         if not self.bring_to_front(app_name):
             return False
         time.sleep(random.uniform(0.5, 1.0))
 
-        sequence = get_start_sequence(module_name)
-        if not sequence or not self.execute_sequence(sequence):
+        sequence = get_start_sequence(module_name, context=context)
+        if not sequence or not self.execute_sequence(sequence, context=context):
             return False
 
         self.current_module = module_name
@@ -491,7 +654,6 @@ class VisionGUIEngine:
             )
             if not ok:
                 logger.warning(f"State verification failed after starting {module_name}")
-                # Don't fail hard — the task may have started but visual cue differs
         return True
 
     def stop_task(self) -> bool:
@@ -508,12 +670,21 @@ class VisionGUIEngine:
         self.current_module = None
         return True
 
-    def switch_task(self, app_name: str, module_name: str) -> bool:
+    def switch_task(self, app_name: str, module_name: str, context: dict | None = None) -> bool:
         if self.is_task_running:
             if not self.stop_task():
                 return False
             time.sleep(random.uniform(2.0, 4.0))
-        return self.start_task(app_name, module_name)
+        return self.start_task(app_name, module_name, context=context)
+
+    def ensure_foreground(self, app_name: str = "face") -> bool:
+        """Bring Housoft to the foreground. Safe to call from any thread.
+
+        Useful at app startup or before any user-triggered task to make sure
+        the Housoft window is on top and not obscured by the browser dashboard,
+        Explorer, or any other window that might have stolen focus.
+        """
+        return self.bring_to_front(app_name)
 
     # ─── Popup handling ──────────────────────────────────────
 

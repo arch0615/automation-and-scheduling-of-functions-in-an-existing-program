@@ -160,6 +160,31 @@
 
         /* Refresh indicator */
         .refresh-info { text-align: center; font-size: 11px; color: #555; margin-top: 20px; }
+
+        /* Focus-warning banner — shows when Housoft is hidden/closed */
+        .focus-banner {
+            display: none;
+            background: linear-gradient(135deg, #c62828, #b71c1c);
+            color: white;
+            padding: 14px 16px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            align-items: flex-start;
+            gap: 12px;
+            box-shadow: 0 4px 16px rgba(198, 40, 40, 0.4);
+            border-left: 4px solid #ff5252;
+            animation: slideIn 0.25s ease-out;
+        }
+        .focus-banner.visible { display: flex; }
+        .focus-banner-icon { font-size: 22px; line-height: 1; padding-top: 1px; }
+        .focus-banner-body { flex: 1; }
+        .focus-banner-title { font-weight: 600; margin-bottom: 2px; }
+        .focus-banner-msg { font-size: 13px; opacity: 0.95; line-height: 1.4; }
+        @keyframes slideIn {
+            from { transform: translateY(-6px); opacity: 0; }
+            to   { transform: translateY(0);    opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -168,6 +193,15 @@
         <div style="display: flex; gap: 12px;">
             <a href="/schedule-editor" style="color: #aaa; text-decoration: none; font-size: 14px;">Agendamento</a>
             <a href="/logout" style="color: #aaa; text-decoration: none; font-size: 14px;">Sair</a>
+        </div>
+    </div>
+
+    <!-- Focus-warning banner (visible only when Housoft is obscured / closed) -->
+    <div class="focus-banner" id="focusBanner" role="alert" aria-live="polite">
+        <div class="focus-banner-icon">⚠</div>
+        <div class="focus-banner-body">
+            <div class="focus-banner-title">Atenção: Housoft não está acessível</div>
+            <div class="focus-banner-msg" id="focusBannerMsg"></div>
         </div>
     </div>
 
@@ -250,6 +284,22 @@
 
                     document.getElementById('intensityMode').textContent = data.intensity_mode || '--';
                     document.getElementById('taskCount').textContent = data.enabled_tasks_count || 0;
+
+                    // Focus-warning banner
+                    const banner = document.getElementById('focusBanner');
+                    const bannerMsg = document.getElementById('focusBannerMsg');
+                    const fs = data.focus_status;
+                    if (fs && fs.ok === false) {
+                        const reason = (fs.last_failure && fs.last_failure.message)
+                            || 'A janela do Housoft não está acessível no momento.';
+                        const failCount = fs.consecutive_failures || 0;
+                        bannerMsg.textContent = failCount > 1
+                            ? `${reason} (${failCount} tentativas)`
+                            : reason;
+                        banner.classList.add('visible');
+                    } else {
+                        banner.classList.remove('visible');
+                    }
 
                     // History
                     const historyList = document.getElementById('historyList');

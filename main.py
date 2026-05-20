@@ -6,15 +6,12 @@ Main entry point - starts the GUI engine, orchestrator, and web dashboard.
 import os
 import sys
 import logging
-from pathlib import Path
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv(Path(__file__).parent / ".env")
+from core.app_paths import load_env_file, logs_dir
 
-# Configure logging
-LOG_DIR = Path(__file__).parent / "logs"
-LOG_DIR.mkdir(exist_ok=True)
+load_env_file()
+
+LOG_DIR = logs_dir()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,27 +30,29 @@ def main():
     logger.info("Housoft Meta-Automation System starting...")
     logger.info("=" * 60)
 
-    # Initialize GUI Engine — Vision-driven (resolution-independent via Claude API).
-    # Falls back to pywinauto then template matching if Vision is unavailable.
     from core.vision_engine import VisionGUIEngine
     gui = VisionGUIEngine()
 
-    # Initialize Orchestrator
+    # Bring Housoft to the front at startup so the user can see it's running
+    # and so the first task interaction doesn't fight the browser for focus.
+    # We don't fail if Housoft isn't open yet — the user may still be launching it.
+    if gui.ensure_foreground("face"):
+        logger.info("Housoft Face brought to foreground")
+    else:
+        logger.warning("Could not bring Housoft Face to foreground — make sure it's running")
+
     from orchestrator.scheduler import TaskOrchestrator
     orchestrator = TaskOrchestrator(gui)
 
-    # Save default config if none exists
     if not orchestrator.CONFIG_PATH.exists():
         orchestrator.save_config()
         logger.info("Default config saved")
 
-    # Initialize Web Dashboard
     from web.app import create_app
     app = create_app(orchestrator)
 
     port = int(os.getenv("FLASK_PORT", 5000))
 
-    # Start ngrok tunnel for mobile access
     ngrok_url = None
     try:
         from pyngrok import ngrok
@@ -67,7 +66,6 @@ def main():
         logger.warning(f"ngrok failed (dashboard will only be accessible locally): {e}")
         print(f"\n  Local URL: http://localhost:{port}\n")
 
-    # Start Flask server
     logger.info(f"Starting web dashboard on port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
 
