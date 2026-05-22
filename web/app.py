@@ -8,9 +8,14 @@ import logging
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request, redirect, url_for, session
 from functools import wraps
-from dotenv import load_dotenv
 
-load_dotenv()
+# Use our multi-encoding tolerant loader instead of the bare python-dotenv one.
+# The installed .env on Windows is often cp1252 (Inno Setup's PatchEnvFile uses
+# the system ANSI codepage and Notepad defaults to ANSI), and python-dotenv's
+# bare load_dotenv() force-decodes UTF-8 and crashes on byte 0x97 (cp1252 em-dash).
+from core.app_paths import load_env_file
+
+load_env_file()
 
 logger = logging.getLogger(__name__)
 
